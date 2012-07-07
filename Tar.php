@@ -34,28 +34,14 @@ $TAR_HDR_PACK_FORMAT =
 
 class TarIOPlain {
 
-	public function __construct($filename) {
-		$this->filename = $filename;
-		$this->f = NULL;
-	}
+	public function __construct($filename) { $this->filename = $filename; $this->f = NULL; }
 
 	/* low-level */
 
-	function open($f, $m) {
-		return fopen($f, $m);
-	}
-
-	function close($f) {
-		fclose($f);
-	}
-
-	function read($f, $n) {
-		return fread($f, $n);
-	}
-
-	function write($f, $s) {
-		fwrite($f, $s);
-	}
+	function open($f, $m) { return fopen($f, $m); }
+	function close($f) { fclose($f); }
+	function read($f, $n) { return fread($f, $n); }
+	function write($f, $s) { fwrite($f, $s); }
 
 	/* high-level */
 
@@ -90,21 +76,10 @@ class TarIOPlain {
 
 class TarIOGzip extends TarIOPlain {
 
-	function open($f, $m) {
-		return gzopen($f, $m);
-	}
-
-	function close($f) {
-		return gzclose($f);
-	}
-
-	function read($f, $n) {
-		return gzread($f, $n);
-	}
-
-	function write($f, $s) {
-		return gzwrite($f, $s);
-	}
+	function open($f, $m) { return gzopen($f, $m); }
+	function close($f) { return gzclose($f); }
+	function read($f, $n) { return gzread($f, $n); }
+	function write($f, $s) { return gzwrite($f, $s); }
 
 }
 
