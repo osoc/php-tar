@@ -165,6 +165,19 @@ class Tar {
 		return $ok;
 	}
 
+	public function header_sum_calc(&$data) {
+		$sum = 0;
+
+		for ($i=0; $i<0x200; $i++) {
+			$c = ord(substr($data, $i, 1));
+			if ($i >= 148 && $i < 156)
+				$c = 32; /* ASCII space */
+			$sum += $c;
+		}
+
+		$data = substr($data, 0, 148) . sprintf("%06o\0 ", $sum) . substr($data, 156, 356);
+	}
+
 	public function header_read($hdr_data) {
 		global $TAR_HDR_UNPACK_FORMAT;
 
@@ -206,6 +219,33 @@ class Tar {
 		return $hdr_info;
 	}
 
+	public function header_pack($hdr_info) {
+		global $TAR_HDR_PACK_FORMAT;
+
+		$hdr_data = str_pad(pack($TAR_HDR_PACK_FORMAT,
+				$hdr_info['name'],
+				sprintf('%07o', $hdr_info['mode']),
+				sprintf('%07o', $hdr_info['uid']),
+				sprintf('%07o', $hdr_info['gid']),
+				sprintf('%011o', $hdr_info['size']),
+				sprintf('%011o', $hdr_info['mtime']),
+				'        ',
+				$hdr_info['type'],
+				$hdr_info['link'],
+				$hdr_info['ustar'],
+				$hdr_info['uver'],
+				$hdr_info['owner'],
+				$hdr_info['group'],
+				sprintf('%08o', $hdr_info['major']),
+				sprintf('%08o', $hdr_info['minor']),
+				$hdr_info['nameprefix']),
+			512, "\0");
+
+		$this->header_sum_calc($hdr_data);
+
+		return $hdr_data;
+	}
+
 	public function load_data($f, $size) {
 		$s = '';
 
@@ -221,6 +261,7 @@ class Tar {
 		return $s;
 	}
 
+	/* 0 indicates finish, <0 indicates error, >0 indicates continue */
 	public function load_one($f) {
 		$hdr_data = $f->record_load();
 		if (strlen($hdr_data) < 0x200 || $hdr_data == str_repeat("\0\0\0\0\0\0\0\0", 64))
@@ -234,15 +275,50 @@ class Tar {
 			return 1;
 
 		$file['data'] = $this->load_data($f, $file['size']);
+		unset($file['size']); /* size is implicit in data */
 		array_push($this->files, $file);
 
 		return 1;
 	}
 
 	public function save($filename, $compress='.gz') {
+		$compress = $this->compress_normalize($compress);
+		$f = new $compress($filename === NULL ? $this->filename : $filename);
+
+		if (!$f->start_save()) {
+			trigger_error("Tar::save: Could not open $f->filename for saving");
+			return FALSE;
+		}
+	
+		foreach ($this->files as $file) {
+			$c = $this->save_one($f, $file);
+
+			if ($c < 0) {
+				trigger_error("Tar::save: Error when saving. $f->filename is probably jacked up");
+				$f->end();
+				return FALSE;
+			}
+		}
+
+		$f->record_save('');
+		$f->record_save('');
+
+		$f->end();
+		return TRUE;
 	}
 
+	/* nonzero indicates error */
 	public function save_one($f, $file) {
+		$file['size'] = strlen($file['data']);
+		$hdr_data = $this->header_pack($file);
+		if ($hdr_data === FALSE)
+			return -1;
+		unset($file['size']); /* size is implicit in data */
+
+		$f->record_save($hdr_data);
+		$f->record_save($file['data']);
+
+		return 0;
 	}
 
 }
@@ -257,6 +333,8 @@ if (isset($argv)) {
 
 	foreach ($tar->files as $file)
 		echo $file['name'] . "\n";
+
+	$tar->save("somefile.tar.gz", ".gz");
 }
 
 ?>
