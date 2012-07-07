@@ -110,25 +110,21 @@ class TarIOGzip extends TarIOPlain {
 
 class Tar {
 
-	public function __construct($filename=NULL, $compressed='') {
-		$this->filename = ($filename === NULL ? 'php-tar' : $filename);
-		$this->compressed = $compressed;
+	public function __construct() {
 		$this->files = array();
 	}
 
-	public function compress_normalize() {
-		switch ($this->compressed) {
-		case '':
-			return 'TarIOPlain';
+	public function compress_normalize($compress) {
+		switch ($compress) {
 		case '.gz':
 			return 'TarIOGzip';
+		default:
+			return 'TarIOPlain';
 		}
-		$this->compressed = '';
-		return 'TarIOPlain';
 	}
 
-	public function load($filename = NULL) {
-		$compress = $this->compress_normalize();
+	public function load($filename=NULL, $compress='.gz') {
+		$compress = $this->compress_normalize($compress);
 		$f = new $compress($filename === NULL ? $this->filename : $filename);
 
 		if (!$f->start_load()) {
@@ -243,7 +239,7 @@ class Tar {
 		return 1;
 	}
 
-	public function save() {
+	public function save($filename, $compress='.gz') {
 	}
 
 	public function save_one($f, $file) {
