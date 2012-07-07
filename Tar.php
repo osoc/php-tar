@@ -2,9 +2,9 @@
 
 /*
    php-tar is a single PHP class that abstracts a tar archive (gzipped
-   tar archives are supported as well, but only as far as PHP's Zlib
-   functions. Documentation is scattered throughout the source file. Scoot
-   around and have a good time.
+   tar archives are supported as well, but only as far as PHP's
+   Zlib functions). Documentation is scattered throughout the source
+   file. Scoot around and have a good time.
  */
 
 $TAR_HDR_UNPACK_FORMAT =
@@ -29,42 +29,125 @@ $TAR_HDR_PACK_FORMAT =
 	'a100' . 'a8' . 'a8' . 'a8' . /* name, mode, uid, gid */
 	'a12' . 'a12' . 'a8' . 'a1' . /* size, mtime, checksum, type */
 	'a100' . 'a6' . 'a2' . 'a32' . /* link, ustar, uver, owner */
-	'a32' . 'a8' . 'a8' . 'a155'; /* group, major, minor, nameprefix */
+	'a32' . 'a8' . 'a8' . 'a155' /* group, major, minor, nameprefix */
+	;
+
+class TarIOPlain {
+
+	public function __construct($filename) {
+		$this->filename = $filename;
+		$this->f = NULL;
+	}
+
+	/* low-level */
+
+	function open($f, $m) {
+		return fopen($f, $m);
+	}
+
+	function close($f) {
+		fclose($f);
+	}
+
+	function read($f, $n) {
+		return fread($f, $n);
+	}
+
+	function write($f, $s) {
+		fwrite($f, $s);
+	}
+
+	/* high-level */
+
+	public function start_load() {
+		$this->f = $this->open($this->filename, "rb");
+		return $this->f !== NULL;
+	}
+
+	public function start_save() {
+		$this->f = $this->open($this->filename, "wb");
+		return $this->f !== NULL;
+	}
+
+	public function end() {
+		$this->close($this->f);
+	}
+
+	public function record_load() {
+		return $this->read($this->f, 512);
+	}
+
+	public function record_save($r) {
+		$len = strlen($r);
+		$n = 0x200;
+
+		if ($len > 0)
+			$n = (($len - 1) & ~0x1ff) + 0x200;
+
+		$this->write($this->f, str_pad($r, $n, "\0"));
+	}
+}
+
+class TarIOGzip extends TarIOPlain {
+
+	function open($f, $m) {
+		return gzopen($f, $m);
+	}
+
+	function close($f) {
+		return gzclose($f);
+	}
+
+	function read($f, $n) {
+		return gzread($f, $n);
+	}
+
+	function write($f, $s) {
+		return gzwrite($f, $s);
+	}
+
+}
 
 class Tar {
 
-	public function __construct() {
-		$this->compressed = TRUE;
+	public function __construct($filename=NULL, $compressed='') {
+		$this->filename = ($filename === NULL ? 'php-tar' : $filename);
+		$this->compressed = $compressed;
 		$this->files = array();
 	}
 
-	public function load($filename) {
-		$zf = gzopen($filename, "rb");
+	public function compress_normalize() {
+		switch ($this->compressed) {
+		case '':
+			return 'TarIOPlain';
+		case '.gz':
+			return 'TarIOGzip';
+		}
+		$this->compressed = '';
+		return 'TarIOPlain';
+	}
 
-		if ($zf === FALSE) {
-			trigger_error("Tar::load: Could not open $filename for loading");
+	public function load($filename = NULL) {
+		$compress = $this->compress_normalize();
+		$f = new $compress($filename === NULL ? $this->filename : $filename);
+
+		if (!$f->start_load()) {
+			trigger_error("Tar::load: Could not open $f->filename for loading");
 			return FALSE;
 		}
 
-		/* XXX: there should be a way to determine this by magic
-		   numbers or something */
-		$this->compressed = (strtoupper(substr($filename, -2)) == "GZ");
-
-		while (($c = $this->load_one($zf)) > 0) {
+		while (($c = $this->load_one($f)) > 0) {
 			/* no-op */
 		}
 
 		if ($c < 0) {
 			trigger_error("Tar::load: Error when unpacking");
-			gzclose($zf);
+			$f->end();
 			return FALSE;
 		}
 
-		gzclose($zf);
-	}
-
-	public function load_record($zf) {
-		return gzread($zf, 512);
+		$f->end();
+		return TRUE;
 	}
 
 	public function header_sum_check($data, $refsum) {
@@ -87,7 +170,7 @@ class Tar {
 	}
 
 	public function header_read($hdr_data) {
-		global $TAR_HDR_PACK_FORMAT;
+		global $TAR_HDR_UNPACK_FORMAT;
 
 		$hdr_info = array('ustar' => '', 'uver' => '00',
 				'owner' => '', 'group' => '', 'major' => 0,
@@ -95,7 +178,7 @@ class Tar {
 
 		$hdr_data = str_pad($hdr_data, 512, "\0");
 
-		$hdr_unpacked = unpack($TAR_HDR_PACK_FORMAT, $hdr_data);
+		$hdr_unpacked = unpack($TAR_HDR_UNPACK_FORMAT, $hdr_data);
 
 		$hdr_info['checksum'] = octdec(trim($hdr_unpacked['checksum'], "\0 "));
 		if (!$this->header_sum_check($hdr_data, $hdr_info['checksum'])) {
@@ -127,11 +210,11 @@ class Tar {
 		return $hdr_info;
 	}
 
-	public function load_data($zf, $size) {
+	public function load_data($f, $size) {
 		$s = '';
 
 		while ($size > 0) {
-			$rec = $this->load_record($zf);
+			$rec = $f->record_load();
 			if ($size < 512)
 				$s .= substr($rec, 0, $size);
 			else
@@ -142,8 +225,8 @@ class Tar {
 		return $s;
 	}
 
-	public function load_one($zf) {
-		$hdr_data = $this->load_record($zf);
+	public function load_one($f) {
+		$hdr_data = $f->record_load();
 		if (strlen($hdr_data) < 0x200 || $hdr_data == str_repeat("\0\0\0\0\0\0\0\0", 64))
 			return 0;
 
@@ -154,10 +237,16 @@ class Tar {
 		if ($file['type'] != 0)
 			return 1;
 
-		$file['data'] = $this->load_data($zf, $file['size']);
+		$file['data'] = $this->load_data($f, $file['size']);
 		array_push($this->files, $file);
 
 		return 1;
+	}
+
+	public function save() {
+	}
+
+	public function save_one($f, $file) {
 	}
 
 }
