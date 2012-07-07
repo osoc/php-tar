@@ -7,24 +7,29 @@
    around and have a good time.
  */
 
-$TAR_HDR_PACK_FORMAT =
-	'a100' . /* 'name' => file name */
-	'a8' . /* 'mode' => file mode */
-	'a8' . /* 'uid' => numeric uid */
-	'a8' . /* 'gid' => numeric gid */
-	'a12' . /* 'size' => size in bytes */
-	'a12' . /* 'mtime' => modification time */
-	'a8' . /* 'checksum' => checksum */
-	'C' . /* 'type' => type indicator */
-	'a100' . /* 'link' => name of linked file */
-	'a6' . /* 'ustar' => UStar indicator */
-	'a2' . /* 'uver' => UStar version */
-	'a32' . /* 'owner' => owner name */
-	'a32' . /* 'group' => group name */
-	'a8' . /* 'major' => device major */
-	'a8' . /* 'minor' => device minor */
-	'a155' /* 'nameprefix' => file name prefix */
+$TAR_HDR_UNPACK_FORMAT =
+	'a100name/' . /* 'name' => file name */
+	'a8mode/' . /* 'mode' => file mode */
+	'a8uid/' . /* 'uid' => numeric uid */
+	'a8gid/' . /* 'gid' => numeric gid */
+	'a12size/' . /* 'size' => size in bytes */
+	'a12mtime/' . /* 'mtime' => modification time */
+	'a8checksum/' . /* 'checksum' => checksum */
+	'a1type/' . /* 'type' => type indicator */
+	'a100link/' . /* 'link' => name of linked file */
+	'a6ustar/' . /* 'ustar' => UStar indicator */
+	'a2uver/' . /* 'uver' => UStar version */
+	'a32owner/' . /* 'owner' => owner name */
+	'a32group/' . /* 'group' => group name */
+	'a8major/' . /* 'major' => device major */
+	'a8minor/' . /* 'minor' => device minor */
+	'a155nameprefix/' /* 'nameprefix' => file name prefix */
 	;
+$TAR_HDR_PACK_FORMAT =
+	'a100' . 'a8' . 'a8' . 'a8' . /* name, mode, uid, gid */
+	'a12' . 'a12' . 'a8' . 'a1' . /* size, mtime, checksum, type */
+	'a100' . 'a6' . 'a2' . 'a32' . /* link, ustar, uver, owner */
+	'a32' . 'a8' . 'a8' . 'a155'; /* group, major, minor, nameprefix */
 
 class Tar {
 
@@ -45,8 +50,14 @@ class Tar {
 		   numbers or something */
 		$this->compressed = (strtoupper(substr($filename, -2)) == "GZ");
 
-		while ($this->load_one($zf)) {
+		while (($c = $this->load_one($zf)) > 0) {
 			/* no-op */
+		}
+
+		if ($c < 0) {
+			trigger_error("Tar::load: Error when unpacking");
+			gzclose($zf);
+			return FALSE;
 		}
 
 		gzclose($zf);
@@ -60,16 +71,24 @@ class Tar {
 		$sum_unsigned = 0;
 		$sum_signed = 0;
 
+		$refsum = (int)$refsum;
+
 		for ($i=0; $i<0x200; $i++) {
 			$c = ord(substr($data, $i, 1));
+			if ($i >= 148 && $i < 156)
+				$c = 32; /* ASCII space */
 			$sum_unsigned += $c;
 			$sum_signed += ($c > 127 ? $c - 256 : $c); /* XXX? */
 		}
 
-		return $refsum == $sum_unsigned || $refsum == $sum_signed;
+		$ok = (($refsum == $sum_unsigned) || ($refsum == $sum_signed));
+
+		return $ok;
 	}
 
 	public function header_read($hdr_data) {
+		global $TAR_HDR_PACK_FORMAT;
+
 		$hdr_info = array('ustar' => '', 'uver' => '00',
 				'owner' => '', 'group' => '', 'major' => 0,
 				'minor' => 0, 'nameprefix' => '');
@@ -78,42 +97,81 @@ class Tar {
 
 		$hdr_unpacked = unpack($TAR_HDR_PACK_FORMAT, $hdr_data);
 
-		if (!$this->header_sum_check($hdr_data, octdec($hdr_unpacked[6])))
+		$hdr_info['checksum'] = octdec(trim($hdr_unpacked['checksum'], "\0 "));
+		if (!$this->header_sum_check($hdr_data, $hdr_info['checksum'])) {
+			trigger_error("Bad checksum, file maybe named {$hdr_unpacked['name']}");
 			return FALSE;
+		}
 
-		$hdr_info['name'] = $hdr_unpacked[0];
-		$hdr_info['mode'] = octdec($hdr_unpacked[1]);
-		$hdr_info['uid'] = octdec($hdr_unpacked[2]);
-		$hdr_info['gid'] = octdec($hdr_unpacked[3]);
-		$hdr_info['size'] = octdec($hdr_unpacked[4]);
-		$hdr_info['mtime'] = octdec($hdr_unpacked[5]);
-		$hdr_info['checksum'] = octdec($hdr_unpacked[6]);
-		$hdr_info['type'] = $hdr_unpacked[7];
-		$hdr_info['link'] = $hdr_unpacked[8];
+		/* TODO: array_map() n stuff */
+		$hdr_info['name'] = trim($hdr_unpacked['name'], "\0");
+		$hdr_info['mode'] = octdec($hdr_unpacked['mode']);
+		$hdr_info['uid'] = octdec($hdr_unpacked['uid']);
+		$hdr_info['gid'] = octdec($hdr_unpacked['gid']);
+		$hdr_info['size'] = octdec($hdr_unpacked['size']);
+		$hdr_info['mtime'] = octdec($hdr_unpacked['mtime']);
+		/*$hdr_info['checksum'] = (we already did this) */
+		$hdr_info['type'] = trim($hdr_unpacked['type'], "\0");
+		$hdr_info['link'] = trim($hdr_unpacked['link'], "\0");
+		$hdr_info['ustar'] = trim($hdr_unpacked['ustar'], "\0");
 
-		if ($hdr_unpacked[9] == 'ustar') {
-			$hdr_info['ustar'] = $hdr_unpacked[9];
-			$hdr_info['uver'] = $hdr_unpacked[10];
-			$hdr_info['owner'] = $hdr_unpacked[11];
-			$hdr_info['group'] = $hdr_unpacked[12];
-			$hdr_info['major'] = octdec($hdr_unpacked[13]);
-			$hdr_info['minor'] = octdec($hdr_unpacked[14]);
-			$hdr_info['nameprefix'] = $hdr_unpacked[15];
+		if ($hdr_info['ustar'] == 'ustar') {
+			$hdr_info['uver'] = trim($hdr_unpacked['uver'], "\0");
+			$hdr_info['owner'] = trim($hdr_unpacked['owner'], "\0");
+			$hdr_info['group'] = trim($hdr_unpacked['group'], "\0");
+			$hdr_info['major'] = octdec($hdr_unpacked['major']);
+			$hdr_info['minor'] = octdec($hdr_unpacked['minor']);
+			$hdr_info['nameprefix'] = trim($hdr_unpacked['nameprefix'], "\0");
 		}
 
 		return $hdr_info;
 	}
 
+	public function load_data($zf, $size) {
+		$s = '';
+
+		while ($size > 0) {
+			$rec = $this->load_record($zf);
+			if ($size < 512)
+				$s .= substr($rec, 0, $size);
+			else
+				$s .= $rec;
+			$size -= 512;
+		}
+
+		return $s;
+	}
+
 	public function load_one($zf) {
 		$hdr_data = $this->load_record($zf);
 		if (strlen($hdr_data) < 0x200 || $hdr_data == str_repeat("\0\0\0\0\0\0\0\0", 64))
-			return FALSE;
+			return 0;
 
-		$file = $this->header_read($this->load_record($zf));
+		$file = $this->header_read($hdr_data);
 		if ($file === FALSE)
-			return FALSE;
+			return -1;
+
+		if ($file['type'] != 0)
+			return 1;
+
+		$file['data'] = $this->load_data($zf, $file['size']);
+		array_push($this->files, $file);
+
+		return 1;
 	}
 
+}
+
+if (isset($argv)) {
+	$tar = new Tar();
+
+	if (count($argv) > 1)
+		$tar->load($argv[1]);
+	else
+		$tar->load("/dev/stdin");
+
+	foreach ($tar->files as $file)
+		echo $file['name'] . "\n";
 }
 
 ?>
