@@ -90,8 +90,6 @@ class Tar {
 		$hdr_info['type'] = $hdr_unpacked[7];
 		$hdr_info['link'] = $hdr_unpacked[8];
 
-		if ($hdr_info['checksum'] != $sum)
-
 		if ($hdr_unpacked[9] == 'ustar') {
 			$hdr_info['ustar'] = $hdr_unpacked[9];
 			$hdr_info['uver'] = $hdr_unpacked[10];
