@@ -7,25 +7,26 @@
    around and have a good time.
  */
 
-class Tar {
+$TAR_HDR_PACK_FORMAT =
+	'a100' . /* 'name' => file name */
+	'a8' . /* 'mode' => file mode */
+	'a8' . /* 'uid' => numeric uid */
+	'a8' . /* 'gid' => numeric gid */
+	'a12' . /* 'size' => size in bytes */
+	'a12' . /* 'mtime' => modification time */
+	'a8' . /* 'checksum' => checksum */
+	'C' . /* 'type' => type indicator */
+	'a100' . /* 'link' => name of linked file */
+	'a6' . /* 'ustar' => UStar indicator */
+	'a2' . /* 'uver' => UStar version */
+	'a32' . /* 'owner' => owner name */
+	'a32' . /* 'group' => group name */
+	'a8' . /* 'major' => device major */
+	'a8' . /* 'minor' => device minor */
+	'a155' /* 'nameprefix' => file name prefix */
+	;
 
-	const HDR_PACK_FORMAT = 'a100' /* 'name' => file name */
-				. 'a8' /* 'mode' => file mode */
-				. 'a8' /* 'uid' => numeric uid */
-				. 'a8' /* 'gid' => numeric gid */
-				. 'a12' /* 'size' => size in bytes */
-				. 'a12' /* 'mtime' => modification time */
-				. 'a8' /* 'checksum' => checksum */
-				. 'C' /* 'type' => type indicator */
-				. 'a100' /* 'link' => name of linked file */
-				. 'a6' /* 'ustar' => UStar indicator */
-				. 'a2' /* 'uver' => UStar version */
-				. 'a32' /* 'owner' => owner name */
-				. 'a32' /* 'group' => group name */
-				. 'a8' /* 'major' => device major */
-				. 'a8' /* 'minor' => device minor */
-				. 'a155' /* 'nameprefix' => file name prefix */
-				;
+class Tar {
 
 	public function __construct() {
 		$this->compressed = TRUE;
@@ -75,7 +76,7 @@ class Tar {
 
 		$hdr_data = str_pad($hdr_data, 512, "\0");
 
-		$hdr_unpacked = unpack(Tar::HDR_PACK_FORMAT, $hdr_data);
+		$hdr_unpacked = unpack($TAR_HDR_PACK_FORMAT, $hdr_data);
 
 		if (!$this->header_sum_check($hdr_data, octdec($hdr_unpacked[6])))
 			return FALSE;
