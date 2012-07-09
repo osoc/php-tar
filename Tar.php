@@ -1,11 +1,45 @@
 <?php
 
-/*
-   php-tar is a single PHP class that abstracts a tar archive (gzipped
+/* php-tar version 0.1 */
+
+/* php-tar is a single PHP class that abstracts a tar archive (gzipped
    tar archives are supported as well, but only as far as PHP's
    Zlib functions). Documentation is scattered throughout the source
    file. Scoot around and have a good time.
- */
+
+   BASIC API:
+
+   $tar = new Tar(); // constructor takes no arguments
+
+   $tar->load($filename[, $format]); // load a file
+      $format defaults to ".gz" but can be either ".gz" or "" to
+      indicate the type of compression on the file. Future versions will
+      auto-detect this.
+
+   $tar->save($filename[, $format]); // save a file
+      Same as load, except in the other direction. Note that php-tar
+      is not fully standards-compliant and might cause data loss when
+      loading and saving a tar archive created by another tar program.
+
+   $tar->to_s(); // export to string
+      Returns an uncompressed string representing the contents of a
+      tar archive. This can be compressed with any of PHP's compression
+      functions. This is useful for generating tar archives from webpages
+      and sending them for download without using the filesystem or
+      requiring external programs.
+
+   $tar->add_file($name, $mode, $data); // add a file
+      Adds a file to the archive. $name should be a full path name with
+      slashes and everything. Parent directories will be created if they
+      need to be.
+
+   $tar->contents([$dirname]); // iterate subtree
+      Returns an array of name => entry pairs for a subtree. If $dirname
+      is omitted, it defaults to the entire archive. If $dirname does not
+      exist or refers to something other than a directory this function
+      will simply return an empty array so code doesn't break.
+
+   */
 
 $TAR_HDR_UNPACK_FORMAT =
 	'a100name/' . /* 'name' => file name */
