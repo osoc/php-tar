@@ -119,6 +119,17 @@ class Tar {
 		$this->files = array();
 	}
 
+	public function add_file($name, $mode, $data) {
+		$file = array('mode' => $mode, 'uid' => 0, 'gid' => 0,
+				'mtime' => time(), 'type' => 0,
+				'link' => '', 'ustar' => 'ustar',
+				'uver' => '00', 'owner' => 'root',
+				'group' => 'root', 'major' => 0,
+				'minor' => 0, 'nameprefix' => '',
+				'data' => $data);
+		$this->files[$name] = $file;
+	}
+
 	public function compress_normalize($compress) {
 		switch ($compress) {
 		case '.gz':
