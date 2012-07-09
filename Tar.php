@@ -83,6 +83,28 @@ class TarIOGzip extends TarIOPlain {
 
 }
 
+class TarIOString extends TarIOPlain {
+
+	function open($f, $m) {
+		if ($m != 'wb') {
+			die('TarIOString can be used for save only');
+			return;
+		}
+
+		$this->s = '';
+	}
+
+	function close($f) { }
+
+	function read($f) { return ''; }
+
+	function write($f, $s) {
+		$this->s .= $s;
+	}
+
+}
+
+
 class Tar {
 
 	public function __construct() {
@@ -296,20 +318,6 @@ class Tar {
 		return 0;
 	}
 
-}
-
-if (isset($argv)) {
-	$tar = new Tar();
-
-	if (count($argv) > 1)
-		$tar->load($argv[1]);
-	else
-		$tar->load("/dev/stdin");
-
-	foreach ($tar->files as $file)
-		echo $file['name'] . "\n";
-
-	$tar->save("somefile.tar.gz", ".gz");
 }
 
 ?>
