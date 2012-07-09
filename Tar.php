@@ -92,6 +92,8 @@ class TarIOString extends TarIOPlain {
 		}
 
 		$this->s = '';
+
+		return TRUE;
 	}
 
 	function close($f) { }
@@ -100,6 +102,12 @@ class TarIOString extends TarIOPlain {
 
 	function write($f, $s) {
 		$this->s .= $s;
+	}
+
+	public function report() {
+		$s = $this->s;
+		$this->s = '';
+		return $s;
 	}
 
 }
@@ -278,10 +286,7 @@ class Tar {
 		return 1;
 	}
 
-	public function save($filename, $compress='.gz') {
-		$compress = $this->compress_normalize($compress);
-		$f = new $compress($filename === NULL ? $this->filename : $filename);
-
+	public function save_data($f) {
 		if (!$f->start_save()) {
 			trigger_error("Tar::save: Could not open $f->filename for saving");
 			return FALSE;
@@ -299,9 +304,6 @@ class Tar {
 
 		$f->record_save('');
 		$f->record_save('');
-
-		$f->end();
-		return TRUE;
 	}
 
 	/* nonzero indicates error */
@@ -316,6 +318,21 @@ class Tar {
 		$f->record_save($file['data']);
 
 		return 0;
+	}
+
+	public function save($filename, $compress='.gz') {
+		$compress = $this->compress_normalize($compress);
+		$f = new $compress($filename === NULL ? $this->filename : $filename);
+		$this->save_data($f);
+		$f->end();
+
+		return TRUE;
+	}
+
+	public function to_s() {
+		$f = new TarIOString('');
+		$this->save_data($f);
+		return $f->report();
 	}
 
 }
