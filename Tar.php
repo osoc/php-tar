@@ -280,8 +280,10 @@ class Tar {
 			return 1;
 
 		$file['data'] = $this->load_data($f, $file['size']);
+		$name = $file['name'];
 		unset($file['size']); /* size is implicit in data */
-		array_push($this->files, $file);
+		unset($file['name']); /* name is array index */
+		$this->files[$name] = $file;
 
 		return 1;
 	}
@@ -292,8 +294,8 @@ class Tar {
 			return FALSE;
 		}
 	
-		foreach ($this->files as $file) {
-			$c = $this->save_one($f, $file);
+		foreach ($this->files as $name => $file) {
+			$c = $this->save_one($f, $name, $file);
 
 			if ($c < 0) {
 				trigger_error("Tar::save: Error when saving. $f->filename is probably jacked up");
@@ -307,12 +309,14 @@ class Tar {
 	}
 
 	/* nonzero indicates error */
-	public function save_one($f, $file) {
+	public function save_one($f, $name, $file) {
 		$file['size'] = strlen($file['data']);
+		$file['name'] = $name;
 		$hdr_data = $this->header_pack($file);
 		if ($hdr_data === FALSE)
 			return -1;
 		unset($file['size']); /* size is implicit in data */
+		unset($file['name']);
 
 		$f->record_save($hdr_data);
 		$f->record_save($file['data']);
