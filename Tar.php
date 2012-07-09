@@ -199,11 +199,39 @@ class Tar {
 				'data' => $data));
 	}
 
-	public function contents($dirname) {
-		$dir = $this->tree->find($dirname);
-		if (!$dir || $dir['type'] != '5')
+	public function dirent($dirname=NULL) {
+		$dir = $this->tree;
+		if ($dirname != NULL) {
+			$dir = $dir->find($dirname);
+			if ($dir === FALSE || $dir['type'] != '5')
+				return FALSE;
+			$dir = $dir['dirent'];
+		}
+		return $dir;
+	}
+
+	public function children($dirname=NULL) {
+		$dir = $this->dirent($dirname);
+		if ($dir === FALSE)
 			return array();
-		return $dir['dirent']->contents();
+		return $dir->contents();
+	}
+
+	public function contents_real(&$c, $pfx, $dirent) {
+		/* this is backwards but whatever */
+		foreach ($dirent->contents() as $name => $ent) {
+			if ($ent['type'] == '5')
+				$this->contents_real($c, $pfx . $name . '/', $ent['dirent']);
+			$c[$pfx . $name] = $ent;
+		}
+	}
+
+	public function contents($dirname=NULL) {
+		$c = array();
+		$pfx = '';
+		$dirent = $this->tree;
+		$this->contents_real($c, $pfx, $dirent);
+		return $c;
 	}
 
 	public function compress_normalize($compress) {
