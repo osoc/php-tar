@@ -113,21 +113,97 @@ class TarIOString extends TarIOPlain {
 }
 
 
-class Tar {
+class TarDirent {
 
 	public function __construct() {
-		$this->files = array();
+		$this->dirent = array();
 	}
 
-	public function add_file($name, $mode, $data) {
-		$file = array('mode' => $mode, 'uid' => 0, 'gid' => 0,
-				'mtime' => time(), 'type' => 0,
+	public function get($name) {
+		if (isset($this->dirent[$name]))
+			return $this->dirent[$name];
+		return FALSE;
+	}
+
+	public function add($name, $ent) {
+		if (isset($this->dirent[$name]))
+			return FALSE;
+		$this->dirent[$name] = $ent;
+		return $ent;
+	}
+
+	public function mkdirent($name) {
+		$d = $this->get($name);
+		if ($d) {
+			if ($d['type'] == '5')
+				return $d['dirent'];
+			return FALSE;
+		}
+		$d = $this->add($name,
+			array('mode' => 0755, 'uid' => 0, 'gid' => 0,
+				'mtime' => time(), 'type' => '5',
 				'link' => '', 'ustar' => 'ustar',
 				'uver' => '00', 'owner' => 'root',
 				'group' => 'root', 'major' => 0,
 				'minor' => 0, 'nameprefix' => '',
-				'data' => $data);
-		$this->files[$name] = $file;
+				'dirent' => new TarDirent()));
+		return $d['dirent'];
+	}
+
+	public function mkdirent_p($name) {
+		$ex = explode('/', $name, 1);
+
+		$d = $this->mkdirent($ex[0]);
+		if (count($ex) > 1)
+			return $d->mkdirent_p($ex[1]);
+		return $d;
+	}
+
+	public function find($name) {
+		$ex = explode('/', $name, 1);
+
+		$d = $this->get($ex[0]);
+		if ($d === FALSE)
+			return FALSE;
+
+		if ($count($ex) < 2)
+			return $d;
+		if ($d['type'] == '5')
+			return $d['dirent']->find($ex[1]);
+		return FALSE;
+	}
+
+	public function contents() {
+		return $this->dirent;
+	}
+
+}
+
+class Tar {
+
+	public function __construct() {
+		$this->tree = new TarDirent();
+	}
+
+	public function add_file($name, $mode, $data) {
+		$tree = $this->tree->mkdirent_p(dirname($name));
+		if ($tree === FALSE)
+			return FALSE;
+		return $tree->add(basename($name),
+			array('mode' => $mode, 'uid' => 0, 'gid' => 0,
+				'mtime' => time(), 'type' => '0',
+				'link' => '', 'ustar' => 'ustar',
+				'uver' => '00', 'owner' => 'root',
+				'group' => 'root', 'major' => 0,
+				'minor' => 0, 'nameprefix' => '',
+				'data' => $data));
+	}
+
+	public function contents($dirname) {
+		$dir = $this->tree->find($dirname);
+		if (!$dir || $dir['type'] != '5')
+			return array();
+		return $dir['dirent']->contents();
 	}
 
 	public function compress_normalize($compress) {
@@ -294,7 +370,12 @@ class Tar {
 		$name = $file['name'];
 		unset($file['size']); /* size is implicit in data */
 		unset($file['name']); /* name is array index */
-		$this->files[$name] = $file;
+		$dir = $this->tree;
+		if (dirname($name) != '.')
+			$dir = $dir->mkdirent_p(dirname($name));
+		if ($dir === FALSE)
+			return -1;
+		$dir->add(basename($name), $file);
 
 		return 1;
 	}
@@ -305,8 +386,8 @@ class Tar {
 			return FALSE;
 		}
 	
-		foreach ($this->files as $name => $file) {
-			$c = $this->save_one($f, $name, $file);
+		foreach ($this->tree->contents() as $name => $ent) {
+			$c = $this->save_one($f, $name, $ent);
 
 			if ($c < 0) {
 				trigger_error("Tar::save: Error when saving. $f->filename is probably jacked up");
@@ -320,7 +401,7 @@ class Tar {
 	}
 
 	/* nonzero indicates error */
-	public function save_one($f, $name, $file) {
+	public function save_file($f, $name, $file) {
 		$file['size'] = strlen($file['data']);
 		$file['name'] = $name;
 		$hdr_data = $this->header_pack($file);
@@ -333,6 +414,33 @@ class Tar {
 		$f->record_save($file['data']);
 
 		return 0;
+	}
+
+	public function save_dir($f, $name, $dir) {
+		$dir['name'] = $name;
+		$dir['size'] = 0;
+		$hdr_data = $this->header_pack($dir);
+		if ($hdr_data === FALSE)
+			return -1;
+		unset($dir['size']);
+		unset($dir['name']);
+
+		$f->record_save($hdr_data);
+
+		foreach($dir['dirent']->contents() as $fname => $file) {
+			$c = $this->save_one($f, $name . '/' . $fname, $file);
+			if ($c < 0)
+				return $c;
+		}
+
+		return 0;
+	}
+
+	public function save_one($f, $name, $ent) {
+		if ($ent['type'] == '5')
+			$this->save_dir($f, $name, $ent);
+		else
+			$this->save_file($f, $name, $ent);
 	}
 
 	public function save($filename, $compress='.gz') {
