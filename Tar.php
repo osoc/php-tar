@@ -132,7 +132,7 @@ class TarIOString extends TarIOPlain {
 
 	function close($f) { }
 
-	function read($f) { return ''; }
+	function read($f, $n) { return ''; }
 
 	function write($f, $s) {
 		$this->s .= $s;
