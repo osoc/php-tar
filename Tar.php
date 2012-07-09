@@ -41,7 +41,7 @@
 
    */
 
-$TAR_HDR_UNPACK_FORMAT =
+define('TAR_HDR_UNPACK_FORMAT',
 	'a100name/' . /* 'name' => file name */
 	'a8mode/' . /* 'mode' => file mode */
 	'a8uid/' . /* 'uid' => numeric uid */
@@ -58,13 +58,13 @@ $TAR_HDR_UNPACK_FORMAT =
 	'a8major/' . /* 'major' => device major */
 	'a8minor/' . /* 'minor' => device minor */
 	'a155nameprefix/' /* 'nameprefix' => file name prefix */
-	;
-$TAR_HDR_PACK_FORMAT =
+	);
+define('TAR_HDR_PACK_FORMAT',
 	'a100' . 'a8' . 'a8' . 'a8' . /* name, mode, uid, gid */
 	'a12' . 'a12' . 'a8' . 'a1' . /* size, mtime, checksum, type */
 	'a100' . 'a6' . 'a2' . 'a32' . /* link, ustar, uver, owner */
 	'a32' . 'a8' . 'a8' . 'a155' /* group, major, minor, nameprefix */
-	;
+	);
 
 class TarIOPlain {
 
@@ -139,9 +139,7 @@ class TarIOString extends TarIOPlain {
 	}
 
 	public function report() {
-		$s = $this->s;
-		$this->s = '';
-		return $s;
+		return "".$this->s;
 	}
 
 }
@@ -333,15 +331,13 @@ class Tar {
 	}
 
 	public function header_read($hdr_data) {
-		global $TAR_HDR_UNPACK_FORMAT;
-
 		$hdr_info = array('ustar' => '', 'uver' => '00',
 				'owner' => '', 'group' => '', 'major' => 0,
 				'minor' => 0, 'nameprefix' => '');
 
 		$hdr_data = str_pad($hdr_data, 512, "\0");
 
-		$hdr_unpacked = unpack($TAR_HDR_UNPACK_FORMAT, $hdr_data);
+		$hdr_unpacked = unpack(TAR_HDR_UNPACK_FORMAT, $hdr_data);
 
 		$hdr_info['checksum'] = octdec(trim($hdr_unpacked['checksum'], "\0 "));
 		if (!$this->header_sum_check($hdr_data, $hdr_info['checksum'])) {
@@ -374,9 +370,7 @@ class Tar {
 	}
 
 	public function header_pack($hdr_info) {
-		global $TAR_HDR_PACK_FORMAT;
-
-		$hdr_data = str_pad(pack($TAR_HDR_PACK_FORMAT,
+		$hdr_data = str_pad(pack(TAR_HDR_PACK_FORMAT,
 				$hdr_info['name'],
 				sprintf('%07o', $hdr_info['mode']),
 				sprintf('%07o', $hdr_info['uid']),
