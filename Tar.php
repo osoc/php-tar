@@ -198,7 +198,7 @@ class TarDirent {
 		if ($d === FALSE)
 			return FALSE;
 
-		if ($count($ex) < 2)
+		if (count($ex) < 2)
 			return $d;
 		if ($d['type'] == '5')
 			return $d['dirent']->find($ex[1]);
@@ -260,8 +260,8 @@ class Tar {
 
 	public function contents($dirname=NULL) {
 		$c = array();
-		$pfx = '';
-		$dirent = $this->tree;
+		$pfx = $dirname === NULL ? '' : $dirname . '/';
+		$dirent = $this->dirent($dirname);
 		$this->contents_real($c, $pfx, $dirent);
 		return $c;
 	}
